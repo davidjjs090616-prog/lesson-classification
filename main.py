@@ -2,9 +2,7 @@ from pathlib import Path
 import json
 
 import pandas as pd
-import plotly.express as px  # 향후 시각화 실습을 위해 사용 가능한 라이브러리
 import streamlit as st
-from sklearn.model_selection import train_test_split  # 향후 예측 실습을 위해 사용 가능
 
 # -----------------------------
 # 페이지 설정
