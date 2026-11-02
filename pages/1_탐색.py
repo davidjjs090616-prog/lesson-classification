@@ -1,188 +1,86 @@
+# pages/1_탐색.py — 나이·혈당의 분포, 두 그룹 비교, 고혈압·심장병별 비율, 빈 값 살펴보기
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# 페이지 설정
-st.set_page_config(
-    page_title="뇌졸중 데이터 탐색", page_icon="📊", layout="wide"
-)
+st.set_page_config(page_title="탐색", page_icon="🔍", layout="wide")
+st.title("🔍 탐색")
+st.write("모델을 만들기 전에 데이터를 들여다봅니다. 화면의 값을 교재의 빈 표에 적으세요.")
 
-st.title("📊 뇌졸중 데이터 탐색 실습실")
-st.markdown(
-    "데이터의 분포를 시각적으로 확인하고, 다양한 조건에 따른 뇌졸중 발생 경향을"
-    " 분석해봅니다."
-)
-st.divider()
+데이터주소 = "https://raw.githubusercontent.com/greatsong/modudata/main/data/stroke.csv"
 
 
-# 데이터 로드 함수 (캐싱 적용)
 @st.cache_data
-def load_data():
-  url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/stroke.csv"
-  df = pd.read_csv(url, encoding="utf-8")
-  return df
+def 데이터_읽기():
+    return pd.read_csv(데이터주소, encoding="utf-8")
 
 
-try:
-  df = load_data()
-except Exception as e:
-  st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
-  st.stop()
+df = 데이터_읽기()
+df["뇌졸중"] = df["stroke"].map({1: "뇌졸중 있음", 0: "뇌졸중 없음"})
+
+st.subheader("1. 나이와 평균 혈당은 어떻게 퍼져 있는가")
+왼쪽, 오른쪽 = st.columns(2)
+with 왼쪽:
+    st.plotly_chart(px.histogram(df, x="age", nbins=40, title="나이 분포",
+                                 labels={"age": "나이", "count": "사람 수"}), width="stretch")
+with 오른쪽:
+    st.plotly_chart(px.histogram(df, x="avg_glucose_level", nbins=40, title="평균 혈당 분포",
+                                 labels={"avg_glucose_level": "평균 혈당", "count": "사람 수"}), width="stretch")
+
+st.subheader("2. 뇌졸중을 겪은 사람과 겪지 않은 사람은 무엇이 다른가")
+왼쪽, 오른쪽 = st.columns(2)
+with 왼쪽:
+    st.plotly_chart(px.box(df, x="뇌졸중", y="age", color="뇌졸중", title="나이 비교",
+                           labels={"age": "나이"}), width="stretch")
+with 오른쪽:
+    st.plotly_chart(px.box(df, x="뇌졸중", y="avg_glucose_level", color="뇌졸중", title="평균 혈당 비교",
+                           labels={"avg_glucose_level": "평균 혈당"}), width="stretch")
+
+두그룹 = df.groupby("뇌졸중").agg(
+    평균_나이=("age", "mean"),
+    평균_혈당=("avg_glucose_level", "mean"),
+    고혈압_비율=("hypertension", "mean"),
+    심장병_비율=("heart_disease", "mean"),
+    사람_수=("id", "size"),
+).reset_index()
+두그룹["평균_나이"] = 두그룹["평균_나이"].round(1)
+두그룹["평균_혈당"] = 두그룹["평균_혈당"].round(1)
+두그룹["고혈압_비율"] = (두그룹["고혈압_비율"] * 100).round(1).astype(str) + "%"
+두그룹["심장병_비율"] = (두그룹["심장병_비율"] * 100).round(1).astype(str) + "%"
+st.dataframe(두그룹, width="stretch", hide_index=True)
+
+st.subheader("3. 고혈압과 심장병이 있으면 뇌졸중 비율이 다른가")
 
 
-# 1. 나이와 평균 혈당의 분포 히스토그램
-st.subheader("1. 나이 및 평균 혈당 분포")
-col1, col2 = st.columns(2)
-
-with col1:
-  fig_age = px.histogram(
-      df, x="age", title="나이(age) 분포", nbins=30, color_discrete_sequence=["#636EFA"]
-  )
-  fig_age.update_xaxis(title="나이")
-  fig_age.update_yaxis(title="사람 수")
-  st.plotly_chart(fig_age, use_container_width=True)
-
-with col2:
-  fig_glucose = px.histogram(
-      df,
-      x="avg_glucose_level",
-      title="평균 혈당(avg_glucose_level) 분포",
-      nbins=30,
-      color_discrete_sequence=["#EF553B"],
-  )
-  fig_glucose.update_xaxis(title="평균 혈당")
-  fig_glucose.update_yaxis(title="사람 수")
-  st.plotly_chart(fig_glucose, use_container_width=True)
-
-st.divider()
+def 비율표(열, 이름):
+    """0과 1로 적힌 열마다 뇌졸중 비율을 구한다."""
+    표 = df.groupby(열)["stroke"].mean().reset_index()
+    표[열] = 표[열].map({1: f"{이름} 있음", 0: f"{이름} 없음"})
+    표["뇌졸중 비율(%)"] = (표["stroke"] * 100).round(2)
+    return 표.rename(columns={열: "구분"})[["구분", "뇌졸중 비율(%)"]]
 
 
-# 2. 뇌졸중 여부에 따른 나이/평균 혈당 상자그림 및 평균값 표
-st.subheader("2. 뇌졸중 여부에 따른 나이 및 평균 혈당 비교")
+왼쪽, 오른쪽 = st.columns(2)
+with 왼쪽:
+    st.plotly_chart(px.bar(비율표("hypertension", "고혈압"), x="구분", y="뇌졸중 비율(%)",
+                           title="고혈압 여부별 뇌졸중 비율", text="뇌졸중 비율(%)"), width="stretch")
+with 오른쪽:
+    st.plotly_chart(px.bar(비율표("heart_disease", "심장병"), x="구분", y="뇌졸중 비율(%)",
+                           title="심장병 여부별 뇌졸중 비율", text="뇌졸중 비율(%)"), width="stretch")
 
-df_plot = df.copy()
-df_plot["stroke_label"] = df_plot["stroke"].map({0: "정상 (0)", 1: "뇌졸중 (1)"})
-
-col1, col2 = st.columns(2)
-
-with col1:
-  fig_box_age = px.box(
-      df_plot,
-      x="stroke_label",
-      y="age",
-      title="뇌졸중 여부별 나이 분포",
-      color="stroke_label",
-  )
-  fig_box_age.update_xaxis(title="뇌졸중 여부")
-  fig_box_age.update_yaxis(title="나이")
-  st.plotly_chart(fig_box_age, use_container_width=True)
-
-with col2:
-  fig_box_glucose = px.box(
-      df_plot,
-      x="stroke_label",
-      y="avg_glucose_level",
-      title="뇌졸중 여부별 평균 혈당 분포",
-      color="stroke_label",
-  )
-  fig_box_glucose.update_xaxis(title="뇌졸중 여부")
-  fig_box_glucose.update_yaxis(title="평균 혈당")
-  st.plotly_chart(fig_box_glucose, use_container_width=True)
-
-# 두 그룹의 평균값 표
-st.markdown("##### 📌 뇌졸중 여부에 따른 변수별 평균값")
-mean_df = df.groupby("stroke")[["age", "avg_glucose_level"]].mean().reset_index()
-mean_df["stroke"] = mean_df["stroke"].map({0: "정상 (0)", 1: "뇌졸중 (1)"})
-mean_df.columns = ["뇌졸중 여부", "평균 나이", "평균 혈당"]
-st.dataframe(mean_df, use_container_width=True)
-
-st.divider()
-
-
-# 3. 고혈압 및 심장병 여부에 따른 뇌졸중 비율 막대그래프
-st.subheader("3. 기저질환(고혈압, 심장병)에 따른 뇌졸중 비율")
-col1, col2 = st.columns(2)
-
-with col1:
-  hyp_grouped = (
-      df.groupby("hypertension")["stroke"]
-      .agg(
-          전체인원="count",
-          뇌졸중인원=lambda x: (x == 1).sum(),
-          발생비율=lambda x: (x == 1).mean() * 100,
-      )
-      .reset_index()
-  )
-  hyp_grouped["hypertension"] = hyp_grouped["hypertension"].map(
-      {0: "고혈압 없음", 1: "고혈압 있음"}
-  )
-
-  fig_hyp = px.bar(
-      hyp_grouped,
-      x="hypertension",
-      y="발생비율",
-      title="고혈압 여부에 따른 뇌졸중 비율 (%)",
-      text_auto=".2f",
-      color="hypertension",
-  )
-  fig_hyp.update_yaxis(title="뇌졸중 비율 (%)")
-  st.plotly_chart(fig_hyp, use_container_width=True)
-
-with col2:
-  heart_grouped = (
-      df.groupby("heart_disease")["stroke"]
-      .agg(
-          전체인원="count",
-          뇌졸중인원=lambda x: (x == 1).sum(),
-          발생비율=lambda x: (x == 1).mean() * 100,
-      )
-      .reset_index()
-  )
-  heart_grouped["heart_disease"] = heart_grouped["heart_disease"].map(
-      {0: "심장병 없음", 1: "심장병 있음"}
-  )
-
-  fig_heart = px.bar(
-      heart_grouped,
-      x="heart_disease",
-      y="발생비율",
-      title="심장병 여부에 따른 뇌졸중 비율 (%)",
-      text_auto=".2f",
-      color="heart_disease",
-  )
-  fig_heart.update_yaxis(title="뇌졸중 비율 (%)")
-  st.plotly_chart(fig_heart, use_container_width=True)
-
-st.divider()
-
-
-# 4. 체질량지수(bmi) 결측치 분석 및 비율 비교 표
-st.subheader("4. 체질량지수(bmi) 결측치 그룹과 전체 데이터 비교")
-
-bmi_missing_df = df[df["bmi"].isnull()]
-missing_count = len(bmi_missing_df)
-missing_stroke_ratio = (
-    (bmi_missing_df["stroke"] == 1).mean() * 100 if missing_count > 0 else 0
-)
-
-overall_count = len(df)
-overall_stroke_ratio = (df["stroke"] == 1).mean() * 100
-
-comparison_data = pd.DataFrame({
-    "구분": ["BMI 결측치 그룹", "전체 데이터"],
-    "사람 수": [missing_count, overall_count],
-    "뇌졸중 발생 비율 (%)": [
-        f"{missing_stroke_ratio:.2f}%",
-        f"{overall_stroke_ratio:.2f}%",
-    ],
+st.subheader("4. 체질량지수가 비어 있는 사람들은 누구인가")
+빈사람 = df[df["bmi"].isna()]
+빈값표 = pd.DataFrame({
+    "구분": ["체질량지수가 비어 있는 사람", "전체"],
+    "사람 수": [len(빈사람), len(df)],
+    "그중 뇌졸중": [int(빈사람["stroke"].sum()), int(df["stroke"].sum())],
+    "뇌졸중 비율(%)": [round(빈사람["stroke"].mean() * 100, 2), round(df["stroke"].mean() * 100, 2)],
 })
-st.dataframe(comparison_data, use_category=True if hasattr(pd, 'Categorical') else False, use_container_width=True)
+st.dataframe(빈값표, width="stretch", hide_index=True)
+st.caption("비어 있다는 것도 데이터입니다. 이 사람들을 어떻게 할지는 다음 시간에 정합니다.")
 
-st.divider()
-
-
-# 5. 흡연 상태(smoking_status)별 인원수 표
-st.subheader("5. 흡연 상태(smoking_status)별 인원수")
-smoking_counts = df["smoking_status"].value_counts().reset_index()
-smoking_counts.columns = ["흡연 상태", "사람 수"]
-st.dataframe(smoking_counts, use_container_width=True)
+st.subheader("5. 흡연 상태에는 어떤 값이 적혀 있는가")
+흡연 = df["smoking_status"].value_counts().reset_index()
+흡연.columns = ["흡연 상태", "사람 수"]
+흡연["비율(%)"] = (흡연["사람 수"] / len(df) * 100).round(1)
+st.dataframe(흡연, width="stretch", hide_index=True)
