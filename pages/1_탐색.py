@@ -176,7 +176,7 @@ comparison_data = pd.DataFrame({
         f"{overall_stroke_ratio:.2f}%",
     ],
 })
-st.dataframe(comparison_data, use_container_width=True)
+st.dataframe(comparison_data, use_category=True if hasattr(pd, 'Categorical') else False, use_container_width=True)
 
 st.divider()
 
