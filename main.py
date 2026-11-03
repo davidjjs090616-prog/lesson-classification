@@ -91,6 +91,58 @@ st.divider()
 st.header("1. 열 정보")
 st.write("우리말 뜻은 교재를 참고해 직접 입력한 뒤 저장하세요.")
 
-info_rows = []
-for column in df.columns:
-    info_rows.append(
+info_rows = [
+    {
+        "열 이름": column,
+        "우리말 뜻": saved_notes["meanings"].get(column, ""),
+        "값의 종류": describe_value_kind(df[column]),
+        "빈 값 개수": int(df[column].isna().sum()),
+    }
+    for column in df.columns
+]
+info_df = pd.DataFrame(info_rows)
+
+with st.form("notes_form"):
+    edited_info = st.data_editor(
+        info_df,
+        hide_index=True,
+        use_container_width=True,
+        disabled=["열 이름", "값의 종류", "빈 값 개수"],
+        column_config={
+            "열 이름": st.column_config.TextColumn("열 이름", width="medium"),
+            "우리말 뜻": st.column_config.TextColumn(
+                "우리말 뜻",
+                help="교재를 참고해 열의 뜻을 입력하세요.",
+                width="large",
+            ),
+            "값의 종류": st.column_config.TextColumn("값의 종류", width="small"),
+            "빈 값 개수": st.column_config.NumberColumn("빈 값 개수", width="small"),
+        },
+        key="column_info_editor",
+    )
+    st.header("2. 데이터 출처")
+    source_text = st.text_area(
+        "교재에 나온 데이터 출처를 입력하세요.",
+        value=saved_notes["source"],
+        placeholder="교재에 적힌 데이터 출처를 입력하세요.",
+        height=100,
+        key="source_editor",
+    )
+    save_clicked = st.form_submit_button("우리말 뜻과 출처 저장", type="primary")
+
+if save_clicked:
+    meanings = {}
+    for _, row in edited_info.iterrows():
+        value = row["우리말 뜻"]
+        meanings[str(row["열 이름"])] = "" if pd.isna(value) else str(value)
+    save_notes(meanings, source_text)
+    st.success(f"입력한 내용을 저장했습니다: 내_기록/{RECORD_FILE.name}")
+    st.rerun()
+
+st.divider()
+st.header("3. 데이터 처음 다섯 줄")
+st.write("CSV에서 읽은 원본 데이터의 처음 다섯 줄입니다.")
+st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+
+st.divider()
+st.caption(f"데이터 출처 URL: {DATA_URL}")
